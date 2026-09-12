@@ -259,7 +259,7 @@ def evaluar(particion: Particion, recomendador, k: int = 10,
 def _con_nombre(f, nombre: str):
     f.nombre = nombre
     return f
-
+    
 
 def por_popularidad(particion: Particion, k: int = 50):
     """Lo mas practicado por todo el mundo, igual para todos.

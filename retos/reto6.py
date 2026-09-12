@@ -50,16 +50,70 @@ arnes le ensena las cuatro cifras y no una.
 
 from __future__ import annotations
 
+import numpy as np
+
 from rlrs.recomendacion import (  # noqa: F401
     Particion,
     factorizacion_implicita,
     knn_items,
     por_popularidad,
     repetir_lo_propio,
+    _con_nombre
+
 )
+
+"""MI PREDICCIÓN
+    
+Repetir lo propiO gana porque ordena lo que el usuario ya practicó por frecuencia total — 
+cuántas veces lo hizo en toda su historia. Mi sospecha es que eso no es lo más preciso: 
+en una partición temporal, lo que mejor predice qué va a hacer el usuario justo después 
+del corte no es "qué tanto lo practicó en general", sino qué fue lo último que practicó — 
+porque los tutores suelen insistir varias veces seguidas en la misma habilidad dentro de una sesión.
+
+Voy a reordenar esos mismos ítems propios, lo más reciente primero en vez de por frecuencia. 
+Espero una mejora en Recall@10, porque solo estoy cambiando el criterio de orden, no añadiendo información nueva."""
 
 
 def mi_recomendador(particion: Particion):
+    n = particion.n_items
+
+    cuenta = np.zeros(n)
+    for tr in particion.para_ajustar:
+        np.add.at(cuenta, tr, 1)
+    respaldo = [int(i) for i in np.argsort(cuenta)[::-1]]
+
+    # Matriz de similitud item-item por coseno, igual que knn_items.
+    R = np.zeros((len(particion.para_ajustar), n), dtype=float)
+    for u, tr in enumerate(particion.para_ajustar):
+        R[u, np.unique(tr)] = 1.0
+    normas = np.linalg.norm(R, axis=0)
+    normas[normas == 0] = 1.0
+    S = (R.T @ R) / np.outer(normas, normas)
+    np.fill_diagonal(S, 0.0)
+
+    vecinos = 20
+    if vecinos < n:
+        umbral = np.partition(S, -vecinos, axis=1)[:, -vecinos][:, None]
+        S = np.where(S >= umbral, S, 0.0)
+
+    def recomendar(historial):
+        propios = np.bincount(historial, minlength=n).astype(float)
+
+        perfil = np.zeros(n)
+        np.add.at(perfil, historial, 1.0)
+        afinidad = S.T @ perfil
+        if afinidad.max() > 0:
+            afinidad = afinidad / afinidad.max()   
+
+        puntaje = propios * 1000.0 + afinidad
+
+        orden = [int(i) for i in np.argsort(puntaje)[::-1]]
+        vistos = set(orden[:50])
+        resto = [i for i in respaldo if i not in vistos]
+        return (orden[:50] + resto)[:50]
+    
+    return _con_nombre(recomendar, "propio + afinidad kNN")
+
     """Devuelve una funcion que recomienda. **Esto es lo que usted escribe.**
 
     Parameters
@@ -76,4 +130,4 @@ def mi_recomendador(particion: Particion):
         una lista de items ordenada de mejor a peor.
     """
     # ── su respuesta va aqui ──────────────────────────────────────────────
-    return knn_items(particion, vecinos=20)
+    #return knn_items(particion, vecinos=20)
